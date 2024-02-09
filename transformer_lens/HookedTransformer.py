@@ -462,8 +462,6 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        use_qk_norm: Optional[bool] = False,
-        use_qk_biases: Optional[bool] = True,
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
@@ -577,8 +575,6 @@ class HookedTransformer(HookedRootModule):
                     else None,
                     shortformer_pos_embed=shortformer_pos_embed,
                     attention_mask=attention_mask,
-                    use_qk_norm=use_qk_norm,
-                    use_qk_biases=use_qk_biases,
                 )  # [batch, pos, d_model]
 
             if stop_at_layer is not None:
