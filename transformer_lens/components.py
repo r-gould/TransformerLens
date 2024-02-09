@@ -439,9 +439,6 @@ class AbstractAttention(ABC, nn.Module):
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
-        self.q_lns = [LayerNorm(cfg, length=cfg.d_head) for _ in range(cfg.num_heads)]
-        self.k_lns = [LayerNorm(cfg, length=cfg.d_head) for _ in range(cfg.num_heads)]
-
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
         self.layer_id = layer_id
@@ -525,8 +522,6 @@ class AbstractAttention(ABC, nn.Module):
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
-        use_qk_norm: Optional[bool] = False,
-        use_qk_biases: Optional[bool] = True,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -535,7 +530,7 @@ class AbstractAttention(ABC, nn.Module):
         attention_mask is the attention mask for padded tokens. Defaults to None.
         """
 
-        q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input, use_qk_norm, use_qk_biases)
+        q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
@@ -638,8 +633,6 @@ class AbstractAttention(ABC, nn.Module):
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
-        use_qk_norm: Optional[bool] = False,
-        use_qk_biases: Optional[bool] = True,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos head_index d_head"],
         Float[torch.Tensor, "batch pos head_index d_head"],
@@ -657,7 +650,8 @@ class AbstractAttention(ABC, nn.Module):
                 query_input,
                 self.W_Q,
             )
-          # [batch, pos, head_index, d_head]
+            + self.b_Q
+        )  # [batch, pos, head_index, d_head]
         k = self.hook_k(
             einsum(
                 f"{qkv_einops_string}, head_index d_model d_head \
@@ -665,18 +659,8 @@ class AbstractAttention(ABC, nn.Module):
                 key_input,
                 self.W_K,
             )
+            + self.b_K
         )  # [batch, pos, head_index, d_head]
-
-        if use_qk_biases:
-            q = q + self.b_Q
-            k = k + self.b_K
-
-        if use_qk_norm:
-            for i in range(self.cfg.n_heads):
-                q[:, :, i, :] = self.q_lns[i](q[:, :, i, :])
-                k[:, :, i, :] = self.k_lns[i](k[:, :, i, :])
-
-        
         v = self.hook_v(
             einsum(
                 f"{qkv_einops_string}, head_index d_model d_head \
@@ -1404,8 +1388,6 @@ class TransformerBlock(nn.Module):
         ] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
-        use_qk_norm: Optional[bool] = False,
-        use_qk_biases: Optional[bool] = True,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
@@ -1467,8 +1449,6 @@ class TransformerBlock(nn.Module):
                 value_input=self.ln1(value_input),
                 past_kv_cache_entry=past_kv_cache_entry,
                 attention_mask=attention_mask,
-                use_qk_norm=use_qk_norm,
-                use_qk_biases=use_qk_biases,
             )
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
