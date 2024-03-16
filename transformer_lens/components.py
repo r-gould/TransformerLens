@@ -439,8 +439,8 @@ class AbstractAttention(ABC, nn.Module):
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
-        self.q_lns = nn.ModuleList([LayerNormPre(cfg, length=cfg.d_head) for _ in range(cfg.n_heads)])
-        self.k_lns = nn.ModuleList([LayerNormPre(cfg, length=cfg.d_head) for _ in range(cfg.n_heads)])
+        self.q_lns = nn.ModuleList([LayerNormPre(cfg) for _ in range(cfg.n_heads)])
+        self.k_lns = nn.ModuleList([LayerNormPre(cfg) for _ in range(cfg.n_heads)])
 
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
